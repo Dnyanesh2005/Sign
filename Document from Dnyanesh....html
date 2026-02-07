@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Sign Gesture Translator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+:root{
+  --bg:#0f172a;
+  --card:#020617cc;
+  --accent:#38bdf8;
+  --green:#22c55e;
+  --yellow:#facc15;
+}
+
+*{box-sizing:border-box;}
+
+body{
+  margin:0;
+  min-height:100vh;
+  background:linear-gradient(160deg,#020617,#0f172a,#020617);
+  font-family:system-ui,Segoe UI,Arial;
+  color:white;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.app{
+  width:100%;
+  max-width:460px;
+  padding:14px;
+}
+
+.header{
+  text-align:center;
+  margin-bottom:12px;
+}
+
+.header h2{
+  margin:0;
+  font-weight:700;
+  letter-spacing:.3px;
+}
+
+.header p{
+  margin:6px 0 0;
+  font-size:13px;
+  color:#cbd5f5;
+}
+
+.card{
+  background:var(--card);
+  border-radius:18px;
+  padding:12px;
+  box-shadow:0 0 0 1px #1e293b,0 20px 40px rgba(0,0,0,.4);
+}
+
+.videoBox{
+  position:relative;
+  overflow:hidden;
+  border-radius:14px;
+}
+
+video,canvas{
+  width:100%;
+  display:block;
+}
+
+.badge{
+  position:absolute;
+  left:10px;
+  bottom:10px;
+  background:rgba(15,23,42,.85);
+  padding:6px 12px;
+  border-radius:999px;
+  font-size:14px;
+  border:1px solid #334155;
+}
+
+.gestureLabel{
+  position:absolute;
+  top:10px;
+  left:50%;
+  transform:translateX(-50%);
+  background:linear-gradient(135deg,#38bdf8,#0ea5e9);
+  color:#020617;
+  padding:6px 14px;
+  border-radius:999px;
+  font-weight:700;
+  letter-spacing:.4px;
+  box-shadow:0 6px 20px rgba(56,189,248,.4);
+}
+
+.resultBox{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin-top:12px;
+}
+
+.langCard{
+  background:#020617;
+  border-radius:14px;
+  padding:12px;
+  border:1px solid #1e293b;
+}
+
+.langTitle{
+  font-size:12px;
+  color:#94a3b8;
+}
+
+.langValue{
+  margin-top:6px;
+  font-size:26px;
+  font-weight:700;
+  color:var(--green);
+}
+
+.footer{
+  margin-top:10px;
+  text-align:center;
+  font-size:12px;
+  color:#94a3b8;
+}
+</style>
+</head>
+
+<body>
+
+<div class="app">
+
+  <div class="header">
+    <h2>Hand Gesture Translator</h2>
+    <p>Real-time | Phone camera | English + Hindi</p>
+  </div>
+
+  <div class="card">
+
+    <div class="videoBox">
+      <video id="video" playsinline></video>
+      <canvas id="canvas"></canvas>
+
+      <div class="gestureLabel" id="gestureLabel">–</div>
+      <div class="badge" id="status">Starting camera…</div>
+    </div>
+
+    <div class="resultBox">
+
+      <div class="langCard">
+        <div class="langTitle">English</div>
+        <div class="langValue" id="en">-</div>
+      </div>
+
+      <div class="langCard">
+        <div class="langTitle">Hindi</div>
+        <div class="langValue" id="hi">-</div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <div class="footer">
+    Show your hand clearly in front of the camera
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+<script>
+const video  = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx    = canvas.getContext("2d");
+
+const en   = document.getElementById("en");
+const hi   = document.getElementById("hi");
+const stat = document.getElementById("status");
+const label= document.getElementById("gestureLabel");
+
+const words = {
+  ONE  : {en:"One",  hi:"एक"},
+  FIVE : {en:"Five", hi:"पाँच"},
+  NONE : {en:"-",    hi:"-"}
+};
+
+function fingerUp(tip, pip){
+  return tip.y < pip.y;
+}
+
+function detectGesture(lm){
+
+  const index  = fingerUp(lm[8],  lm[6]);
+  const middle = fingerUp(lm[12], lm[10]);
+  const ring   = fingerUp(lm[16], lm[14]);
+  const pinky  = fingerUp(lm[20], lm[18]);
+
+  if(index && !middle && !ring && !pinky)
+    return "ONE";
+
+  if(index && middle && ring && pinky)
+    return "FIVE";
+
+  return "NONE";
+}
+
+const hands = new Hands({
+  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+});
+
+hands.setOptions({
+  maxNumHands:1,
+  modelComplexity:1,
+  minDetectionConfidence:0.7,
+  minTrackingConfidence:0.7
+});
+
+hands.onResults(res => {
+
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(res.image,0,0,canvas.width,canvas.height);
+
+  if(res.multiHandLandmarks && res.multiHandLandmarks.length>0){
+
+    stat.textContent = "Hand detected";
+
+    const lm = res.multiHandLandmarks[0];
+
+    drawConnectors(ctx,lm,HAND_CONNECTIONS,{color:"#38bdf8",lineWidth:3});
+    drawLandmarks(ctx,lm,{color:"#22c55e",radius:3});
+
+    const g = detectGesture(lm);
+
+    en.textContent = words[g].en;
+    hi.textContent = words[g].hi;
+    label.textContent = g;
+
+  }else{
+
+    stat.textContent = "Show your hand";
+    en.textContent = "-";
+    hi.textContent = "-";
+    label.textContent = "–";
+  }
+});
+
+const camera = new Camera(video,{
+  onFrame: async ()=>{
+    await hands.send({image:video});
+  },
+  facingMode:"user"
+});
+
+camera.start().then(()=>{
+  stat.textContent = "Camera ready";
+}).catch(e=>{
+  stat.textContent = "Camera error";
+  console.error(e);
+});
+</script>
+
+</body>
+</html>
